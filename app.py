@@ -28,13 +28,13 @@ def load_data(path: str):
 
 # --------- CONFIGURACIÓN DE LA PÁGINA ---------
 st.set_page_config(
-    page_title="Dashboard Maytag Series 6 – Xtronic",
+    page_title="Dashboard Maytag Series 6",
     layout="wide",
 )
 
-st.title("Dashboard Maytag Series 6 – Xtronic")
+st.title("Dashboard Maytag Series 6")
 
-DATA_PATH = "maytag_dashboard_data.csv"
+DATA_PATH = "maytag_dashboardFinal_data.csv"
 data = load_data(DATA_PATH)
 
 # --------- CÁLCULOS GLOBALES CD vs CW ---------
