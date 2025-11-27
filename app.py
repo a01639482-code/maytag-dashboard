@@ -126,19 +126,25 @@ with col_bottom1:
         )
 
         # ---- Estética de la gráfica por FVT ----
-        fig_fvt.update_traces(
-            marker_color=PRIMARY_COLOR,
-            texttemplate="%{text:.1f}%",
-            textposition="outside",
-        )
-        fig_fvt.update_layout(
-            title_font=dict(size=22),
-            xaxis_title="Modelo FVT",
-            yaxis_title="% de fallas",
-            bargap=0.2,
-            height=380,
-            margin=dict(l=20, r=20, t=40, b=40),
-        )
+        max_rate_fvt = failure_by_fvt["FailRate_pct"].max()
+
+fig_fvt.update_traces(
+    marker_color=PRIMARY_COLOR,
+    texttemplate="%{text:.1f}%",
+    textposition="outside",
+)
+
+fig_fvt.update_layout(
+    title_text="",          # <-- esto quita el 'undefined'
+    showlegend=False,
+    title_font=dict(size=22),
+    xaxis_title="Modelo FVT",
+    yaxis_title="% de fallas",
+    yaxis_range=[0, max_rate_fvt * 1.15],  # deja espacio para el 18.9%
+    bargap=0.2,
+    height=380,
+    margin=dict(l=20, r=20, t=40, b=40),
+)
 
         st.plotly_chart(fig_fvt, use_container_width=True)
     else:
@@ -170,13 +176,24 @@ with col_bottom2:
             line_width=3,
             marker=dict(size=8),
         )
-        fig_time.update_layout(
-            title_font=dict(size=22),
-            xaxis_title="Semana",
-            yaxis_title="% de fallas",
-            height=380,
-            margin=dict(l=20, r=20, t=40, b=40),
-        )
+       max_rate_time = failure_over_time["FailRate_pct"].max()
+
+fig_time.update_traces(
+    line_color=PRIMARY_COLOR,
+    line_width=3,
+    marker=dict(size=8),
+)
+
+fig_time.update_layout(
+    title_text="",          # <-- también quita el 'undefined' aquí
+    showlegend=False,
+    title_font=dict(size=22),
+    xaxis_title="Semana",
+    yaxis_title="% de fallas",
+    yaxis_range=[0, max_rate_time * 1.15],
+    height=380,
+    margin=dict(l=20, r=20, t=40, b=40),
+)
 
         st.plotly_chart(fig_time, use_container_width=True)
     else:
