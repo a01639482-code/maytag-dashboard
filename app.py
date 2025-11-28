@@ -233,7 +233,7 @@ else:
         y=x_col,
         x="Percent_out_of_limits",
         orientation="h",
-        color_discrete_sequence=["royalblue"],
+        color_discrete_sequence=["steelblue"],
         text="Percent_out_of_limits",
         labels={
             x_col: "Prueba GetAngle",
