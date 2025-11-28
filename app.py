@@ -34,8 +34,15 @@ def load_getangle_summary(path: str):
 
     # Asegurar tipos correctos
     df["FVT"] = df["FVT"].astype(str)
-    df["BaseType"] = df["BaseType"].astype(str)
+    if "BaseType" in df.columns:
+        df["BaseType"] = df["BaseType"].astype(str)
     df["Percent_out_of_limits"] = df["Percent_out_of_limits"].astype(float)
+
+    # Si tenemos columnas Test_raw / Test_col las dejamos listas
+    if "Test_raw" in df.columns:
+        df["Test_raw"] = df["Test_raw"].astype(str)
+    if "Test_col" in df.columns:
+        df["Test_col"] = df["Test_col"].astype(str)
 
     return df
 
@@ -50,7 +57,7 @@ st.title("Dashboard Maytag Series 6 – Xtronic")
 
 # --------- RUTAS DE ARCHIVOS ---------
 DATA_PATH = "maytag_dashboardFinal_data.csv"
-SUMMARY_PATH = "getangle_summary_v2.csv"   # ←← NOMBRE ACTUALIZADO
+SUMMARY_PATH = "getangle_summary_v2.csv"   # ← nombre que tú usaste
 
 data = load_data(DATA_PATH)
 getangle_summary = load_getangle_summary(SUMMARY_PATH)
@@ -187,51 +194,52 @@ with col_bottom2:
 st.markdown("---")
 st.header("Análisis de límites de control – Pruebas GetAngle")
 
-# Filtros para esta sección
-col_filters1, col_filters2 = st.columns(2)
+# Para esta sección usamos SOLO FVT (sin separar CD/CW aquí)
+available_fvts_limits = sorted(getangle_summary["FVT"].unique())
 
-with col_filters1:
-    base_for_limits = st.selectbox(
-        "Tipo de producto (CD / CW)",
-        sorted(getangle_summary["BaseType"].unique())
-    )
+fvt_for_limits = st.selectbox(
+    "Selecciona FVT para análisis de GetAngle",
+    available_fvts_limits,
+)
 
-with col_filters2:
-    available_fvts = sorted(
-        getangle_summary[getangle_summary["BaseType"] == base_for_limits]["FVT"].unique()
-    )
-    fvt_for_limits = st.selectbox(
-        "Selecciona FVT para análisis de GetAngle",
-        available_fvts,
-    )
-
-summary_filtered = getangle_summary[
-    (getangle_summary["BaseType"] == base_for_limits) &
-    (getangle_summary["FVT"] == fvt_for_limits)
-]
+summary_filtered = getangle_summary[getangle_summary["FVT"] == fvt_for_limits]
 
 if summary_filtered.empty:
-    st.warning("No hay datos de límites para esta combinación de FVT y tipo de producto.")
+    st.warning("No hay datos de límites para esta FVT.")
 else:
     st.markdown(
         f"**% de lecturas fuera de límites de control** "
-        f"para las pruebas GetAngle de **{fvt_for_limits} – {base_for_limits}**."
+        f"para las pruebas GetAngle de **{fvt_for_limits}**."
     )
 
+    # Elegimos la columna de nombre de prueba
+    if "Test_raw" in summary_filtered.columns:
+        x_col = "Test_raw"
+    elif "Test_col" in summary_filtered.columns:
+        x_col = "Test_col"
+    elif "Test" in summary_filtered.columns:
+        x_col = "Test"
+    else:
+        x_col = summary_filtered.columns[0]  # fallback muy defensivo
+
+    summary_plot = summary_filtered.sort_values("Percent_out_of_limits", ascending=False)
+
     fig_limits = px.bar(
-        summary_filtered,
-        x="Test",
+        summary_plot,
+        x=x_col,
         y="Percent_out_of_limits",
         text="Percent_out_of_limits",
-        labels={"Test": "Prueba GetAngle", "Percent_out_of_limits": "% fuera de límites"},
+        labels={
+            x_col: "Prueba GetAngle",
+            "Percent_out_of_limits": "% fuera de límites",
+        },
     )
 
     fig_limits.update_traces(
-        texttemplate='%{text:.1%}',
+        texttemplate='%{text:.2f}%',
         textposition='outside'
     )
     fig_limits.update_layout(
-        yaxis_tickformat=".0%",
         yaxis_title="% fuera de límites",
         xaxis_title="Prueba GetAngle",
         xaxis_tickangle=-45,
