@@ -103,6 +103,9 @@ Monitoreo de desempeño de pruebas **CD (secadoras)** y **CW (lavadoras)**
 DATA_PATH = "maytag_dashboardFinal_data.csv"
 SUMMARY_PATH = "getangle_summary_v2.csv"
 
+data = load_data(DATA_PATH)  # 👈 usamos la función que sí existe
+getangle_summary = load_getangle_summary(SUMMARY_PATH)
+
 # Cargar datos
 data = load_main_data(DATA_PATH)
 getangle_summary = load_getangle_summary(SUMMARY_PATH)
