@@ -32,10 +32,9 @@ def load_data(path: str):
 def load_getangle_summary(path: str):
     df = pd.read_csv(path)
 
-    # Asegurar tipos
+    # Asegurar tipos correctos
     df["FVT"] = df["FVT"].astype(str)
     df["BaseType"] = df["BaseType"].astype(str)
-    # La columna está en proporción (0.58 = 58%)
     df["Percent_out_of_limits"] = df["Percent_out_of_limits"].astype(float)
 
     return df
@@ -50,8 +49,8 @@ st.set_page_config(
 st.title("Dashboard Maytag Series 6 – Xtronic")
 
 # --------- RUTAS DE ARCHIVOS ---------
-DATA_PATH = "maytag_dashboardFinal_data.csv"     # base “ligera”
-SUMMARY_PATH = "getangle_summary.csv"            # nuevo resumen de límites
+DATA_PATH = "maytag_dashboardFinal_data.csv"
+SUMMARY_PATH = "getangle_summary_v2.csv"   # ←← NOMBRE ACTUALIZADO
 
 data = load_data(DATA_PATH)
 getangle_summary = load_getangle_summary(SUMMARY_PATH)
@@ -64,7 +63,6 @@ failure_by_product = (
 )
 failure_by_product["FailRate_pct"] = 100 * failure_by_product["FailRate"]
 
-# Para mensajes de comparación
 cd_rate = failure_by_product.loc[
     failure_by_product["BaseType"] == "CD", "FailRate_pct"
 ]
@@ -142,7 +140,6 @@ with col_bottom1:
             x="FVT",
             y="FailRate_pct",
             text="FailRate_pct",
-            labels={"FVT": "Modelo FVT", "FailRate_pct": "% de fallas"},
         )
         fig_fvt.update_traces(
             texttemplate='%{text:.2f}%',
@@ -174,7 +171,6 @@ with col_bottom2:
             x="Week",
             y="FailRate_pct",
             markers=True,
-            labels={"Week": "Semana", "FailRate_pct": "% de fallas"},
         )
         fig_time.update_layout(
             yaxis_title="% de fallas",
@@ -197,10 +193,7 @@ col_filters1, col_filters2 = st.columns(2)
 with col_filters1:
     base_for_limits = st.selectbox(
         "Tipo de producto (CD / CW)",
-        sorted(getangle_summary["BaseType"].unique()),
-        index=sorted(getangle_summary["BaseType"].unique()).index(product_type)
-        if product_type in getangle_summary["BaseType"].unique()
-        else 0,
+        sorted(getangle_summary["BaseType"].unique())
     )
 
 with col_filters2:
@@ -227,16 +220,12 @@ else:
 
     fig_limits = px.bar(
         summary_filtered,
-        x="Test",                      # nombre de la prueba (Get Angle0, Get Angle1...)
-        y="Percent_out_of_limits",     # proporción 0–1
+        x="Test",
+        y="Percent_out_of_limits",
         text="Percent_out_of_limits",
-        labels={
-            "Test": "Prueba GetAngle",
-            "Percent_out_of_limits": "% fuera de límites",
-        },
+        labels={"Test": "Prueba GetAngle", "Percent_out_of_limits": "% fuera de límites"},
     )
 
-    # Formato bonito en porcentaje
     fig_limits.update_traces(
         texttemplate='%{text:.1%}',
         textposition='outside'
