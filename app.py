@@ -10,7 +10,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("Dashboard Maytag Series6 ")
+st.title("Dashboard Maytag Series 6 ")
 st.markdown(
     """
 Monitoreo de desempeño de pruebas **CD (secadoras)** y **CW (lavadoras)**  
