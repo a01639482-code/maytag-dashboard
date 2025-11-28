@@ -30,27 +30,56 @@ SUMMARY_PATH = "getangle_summary_v2.csv"
 # LOADERS CON CACHE
 # --------------------------------------------------
 @st.cache_data
-def load_main_data(path: str) -> pd.DataFrame:
+def load_getangle_summary(path: str) -> pd.DataFrame:
     df = pd.read_csv(path)
 
-    # Normalizar columnas clave
-    if "FVT" in df.columns:
-        df["FVT"] = df["FVT"].astype(str)
-    if "BaseType" in df.columns:
-        df["BaseType"] = df["BaseType"].astype(str)
+    # 1) Normalizar nombres de columnas (quita espacios al inicio/final)
+    df.columns = df.columns.str.strip()
 
-    # Columna Fail: 1 si Status = 'FAILED'
-    if "Status" in df.columns:
-        df["Fail"] = (
-            df["Status"]
-            .astype(str)
-            .str.strip()
-            .str.upper()
-            .eq("FAILED")
-            .astype(int)
-        )
+    # 2) Por si vienen con otros nombres raros, intentamos mapearlos
+    #    (ajusta aquí si ves otros nombres en tu CSV)
+    rename_map = {}
+    if "BaseType " in df.columns:
+        rename_map["BaseType "] = "BaseType"
+    if "Test " in df.columns:
+        rename_map["Test "] = "Test"
+    if "Percent_out_of_limits " in df.columns:
+        rename_map["Percent_out_of_limits "] = "Percent_out_of_limits"
+
+    if rename_map:
+        df = df.rename(columns=rename_map)
+
+    # 3) Ahora sí, validamos que estén las columnas clave
+    expected_cols = {"FVT", "BaseType", "Test"}
+    missing = expected_cols.difference(df.columns)
+
+    if missing:
+        # Esto nos ayuda a depurar si vuelve a fallar
+        st.write("Columnas reales en getangle_summary_v2.csv:", list(df.columns))
+        raise ValueError(f"Faltan columnas en getangle_summary: {missing}")
+
+    # 4) Tipos de datos
+    df["FVT"] = df["FVT"].astype(str)
+    df["BaseType"] = df["BaseType"].astype(str)
+    df["Test"] = df["Test"].astype(str)
+
+    # 5) Columna de porcentaje fuera de límites
+    if "Percent_out_of_limits" in df.columns:
+        df["Percent_out_of_limits"] = df["Percent_out_of_limits"].astype(float)
+    elif "Percent" in df.columns:
+        df["Percent_out_of_limits"] = df["Percent"].astype(float)
     else:
-        df["Fail"] = 0
+        st.write("Columnas en getangle_summary_v2.csv:", list(df.columns))
+        raise ValueError(
+            "No encuentro la columna 'Percent_out_of_limits' ni 'Percent' "
+            "en getangle_summary_v2.csv"
+        )
+
+    # 6) Crear columna en porcentaje 0–100
+    df["Percent_out_of_limits_pct"] = df["Percent_out_of_limits"] * 100.0
+
+    return df
+
 
     # Columna Week a partir de Date (si existe)
     if "Date" in df.columns:
