@@ -35,11 +35,19 @@ def load_data(path: str):
     df["Week"] = df["Date"].dt.to_period("W").dt.start_time
 
     return df
-
+@st.cache_data
+def load_getangle_summary(path: str):
+    df = pd.read_csv(path)
+    df["Percent_out_of_limits"] = df["Percent_out_of_limits"].astype(float)
+    return df
 
 # --------- LEER DATA ---------
 DATA_PATH = "maytag_dashboardFinal_data.csv"
 data = load_data(DATA_PATH)
+
+SUMMARY_PATH = "getangle_summary_v2.csv"
+getangle_summary = load_getangle_summary(SUMMARY_PATH)
+
 
 # --------- CÁLCULOS GLOBALES ---------
 failure_by_product = (
@@ -191,4 +199,35 @@ with col_bottom2:
         st.plotly_chart(fig_time, use_container_width=True)
     else:
         st.info("No hay datos con fecha para los filtros seleccionados.")
+
+    st.markdown("---")
+st.header("Análisis de límites de control (GetAngle)")
+
+# Selector de FVT
+fvt_list = sorted(getangle_summary["FVT"].unique())
+fvt_selected_limits = st.selectbox("Selecciona FVT", fvt_list)
+
+summary_filtered = getangle_summary[getangle_summary["FVT"] == fvt_selected_limits]
+
+if summary_filtered.empty:
+    st.warning("No hay datos para esta FVT.")
+else:
+    fig_limits = px.bar(
+        summary_filtered,
+        x="Test",
+        y="Percent_out_of_limits",
+        text="Percent_out_of_limits",
+        labels={"Test": "Prueba GetAngle", "Percent_out_of_limits": "% fuera de límites"},
+        title=f"% fuera de límites para {fvt_selected_limits}",
+    )
+
+    fig_limits.update_traces(texttemplate='%{text:.1%}', textposition='outside')
+    fig_limits.update_layout(
+        yaxis_tickformat=".0%",
+        yaxis_title="% fuera de límites",
+        height=450
+    )
+
+    st.plotly_chart(fig_limits, use_container_width=True)
+
 
