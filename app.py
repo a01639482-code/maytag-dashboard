@@ -2,105 +2,148 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# --------- CARGA DE DATOS PRINCIPALES ---------
-@st.cache_data
-def load_data(path: str):
-    df = pd.read_csv(path, parse_dates=["Date"])
-
-    # Asegurar tipos
-    df["BaseType"] = df["BaseType"].astype(str)
-    df["FVT"] = df["FVT"].astype(str)
-
-    # Columna de falla: 1 si Status = 'FAILED'
-    df["Fail"] = (
-        df["Status"]
-        .astype(str)
-        .str.strip()
-        .str.upper()
-        .eq("FAILED")
-        .astype(int)
-    )
-
-    # Semana (inicio de cada semana)
-    df["Week"] = df["Date"].dt.to_period("W").dt.start_time
-
-    return df
-
-
-# --------- CARGA DEL RESUMEN DE LÍMITES (GETANGLE) ---------
-@st.cache_data
-def load_getangle_summary(path: str):
-    df = pd.read_csv(path)
-
-    # Asegurar tipos correctos
-    df["FVT"] = df["FVT"].astype(str)
-    if "BaseType" in df.columns:
-        df["BaseType"] = df["BaseType"].astype(str)
-    df["Percent_out_of_limits"] = df["Percent_out_of_limits"].astype(float)
-
-    # Si tenemos columnas Test_raw / Test_col las dejamos listas
-    if "Test_raw" in df.columns:
-        df["Test_raw"] = df["Test_raw"].astype(str)
-    if "Test_col" in df.columns:
-        df["Test_col"] = df["Test_col"].astype(str)
-
-    return df
-
-
-# --------- CONFIGURACIÓN DE LA PÁGINA ---------
+# --------------------------------------------------
+# CONFIGURACIÓN GENERAL
+# --------------------------------------------------
 st.set_page_config(
     page_title="Dashboard Maytag Series 6 – Xtronic",
     layout="wide",
 )
 
 st.title("Dashboard Maytag Series 6 – Xtronic")
+st.markdown(
+    """
+    Monitoreo de desempeño de pruebas **CD (secadoras)** y **CW (lavadoras)**  
+    • % de fallas por tipo de producto, por FVT y por semana  
+    • % de lecturas **fuera de límites de control** para pruebas GetAngle  
+    """
+)
 
-# --------- RUTAS DE ARCHIVOS ---------
+# --------------------------------------------------
+# PATHS DE ARCHIVOS
+# --------------------------------------------------
 DATA_PATH = "maytag_dashboardFinal_data.csv"
 SUMMARY_PATH = "getangle_summary_v2.csv"
 
-data = load_data(DATA_PATH)
+
+# --------------------------------------------------
+# LOADERS CON CACHE
+# --------------------------------------------------
+@st.cache_data
+def load_main_data(path: str) -> pd.DataFrame:
+    df = pd.read_csv(path)
+
+    # Normalizar columnas clave
+    if "FVT" in df.columns:
+        df["FVT"] = df["FVT"].astype(str)
+    if "BaseType" in df.columns:
+        df["BaseType"] = df["BaseType"].astype(str)
+
+    # Columna Fail: 1 si Status = 'FAILED'
+    if "Status" in df.columns:
+        df["Fail"] = (
+            df["Status"]
+            .astype(str)
+            .str.strip()
+            .str.upper()
+            .eq("FAILED")
+            .astype(int)
+        )
+    else:
+        df["Fail"] = 0
+
+    # Columna Week a partir de Date (si existe)
+    if "Date" in df.columns:
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+        df["Week"] = df["Date"].dt.to_period("W").dt.start_time
+    else:
+        df["Week"] = pd.NaT
+
+    return df
+
+
+@st.cache_data
+def load_getangle_summary(path: str) -> pd.DataFrame:
+    df = pd.read_csv(path)
+
+    # Asegurarnos de que las columnas clave existan
+    expected_cols = {"FVT", "BaseType", "Test"}
+    missing = expected_cols.difference(df.columns)
+    if missing:
+        raise ValueError(f"Faltan columnas en getangle_summary: {missing}")
+
+    df["FVT"] = df["FVT"].astype(str)
+    df["BaseType"] = df["BaseType"].astype(str)
+    df["Test"] = df["Test"].astype(str)
+
+    # Columna de porcentaje fuera de límites
+    if "Percent_out_of_limits" in df.columns:
+        df["Percent_out_of_limits"] = df["Percent_out_of_limits"].astype(float)
+    elif "Percent" in df.columns:
+        df["Percent_out_of_limits"] = df["Percent"].astype(float)
+    else:
+        raise ValueError(
+            "No encuentro la columna 'Percent_out_of_limits' ni 'Percent' "
+            "en getangle_summary_v2.csv"
+        )
+
+    # Crear columna en porcentaje 0–100
+    df["Percent_out_of_limits_pct"] = df["Percent_out_of_limits"] * 100.0
+
+    return df
+
+
+# --------------------------------------------------
+# CARGA DE DATOS
+# --------------------------------------------------
+data = load_main_data(DATA_PATH)
 getangle_summary = load_getangle_summary(SUMMARY_PATH)
 
-# --------- CÁLCULOS GLOBALES CD vs CW ---------
+# --------------------------------------------------
+# CÁLCULOS GLOBALES CD vs CW
+# --------------------------------------------------
 failure_by_product = (
     data.groupby("BaseType")["Fail"]
-        .mean()
-        .reset_index(name="FailRate")
+    .mean()
+    .reset_index(name="FailRate")
 )
 failure_by_product["FailRate_pct"] = 100 * failure_by_product["FailRate"]
 
-cd_rate = failure_by_product.loc[
-    failure_by_product["BaseType"] == "CD", "FailRate_pct"
-]
-cw_rate = failure_by_product.loc[
-    failure_by_product["BaseType"] == "CW", "FailRate_pct"
-]
+# Para mostrar en el resumen rápido
+def get_rate_for(bt: str):
+    s = failure_by_product.loc[failure_by_product["BaseType"] == bt, "FailRate_pct"]
+    return float(s.iloc[0]) if not s.empty else None
 
-cd_rate = float(cd_rate.iloc[0]) if not cd_rate.empty else None
-cw_rate = float(cw_rate.iloc[0]) if not cw_rate.empty else None
 
-# --------- SIDEBAR: FILTROS ---------
+cd_rate = get_rate_for("CD")
+cw_rate = get_rate_for("CW")
+
+# --------------------------------------------------
+# SIDEBAR: FILTROS PRINCIPALES
+# --------------------------------------------------
 st.sidebar.header("Filtros principales")
 
 product_type = st.sidebar.radio(
-    "Selecciona el tipo de producto",
-    sorted(data["BaseType"].unique()),
+    "Selecciona el producto",
+    sorted(data["BaseType"].dropna().unique()),
     help="CD = secadoras, CW = lavadoras",
 )
 
 subset = data[data["BaseType"] == product_type].copy()
 
+fvt_options = sorted(subset["FVT"].dropna().unique())
 fvt_selected = st.sidebar.multiselect(
     "Selecciona FVT",
-    sorted(subset["FVT"].unique()),
-    default=sorted(subset["FVT"].unique()),
+    options=fvt_options,
+    default=fvt_options,
 )
 
 if fvt_selected:
     subset = subset[subset["FVT"].isin(fvt_selected)]
 
-# --------- MÉTRICA PRINCIPAL DEL PRODUCTO SELECCIONADO ---------
+# --------------------------------------------------
+# MÉTRICAS PRINCIPALES
+# --------------------------------------------------
 selected_fail_rate = subset["Fail"].mean() * 100 if len(subset) > 0 else 0.0
 
 col_top1, col_top2 = st.columns([2, 1])
@@ -114,30 +157,31 @@ with col_top1:
 
 with col_top2:
     st.subheader("Comparativo general CD vs CW")
-    txt = ""
-    if cd_rate is not None and cw_rate is not None:
-        txt = f"- CD: **{cd_rate:.2f}%**\n- CW: **{cw_rate:.2f}%**"
-    elif cd_rate is not None:
-        txt = f"- CD: **{cd_rate:.2f}%**"
-    elif cw_rate is not None:
-        txt = f"- CW: **{cw_rate:.2f}%**"
+    lines = []
+    if cd_rate is not None:
+        lines.append(f"- CD: **{cd_rate:.2f}%**")
+    if cw_rate is not None:
+        lines.append(f"- CW: **{cw_rate:.2f}%**")
+    if lines:
+        st.markdown("\n".join(lines))
     else:
-        txt = "Sin datos suficientes."
-    st.markdown(txt)
+        st.info("Aún no hay información global de CD/CW.")
 
 st.markdown("---")
 
-# --------- DISTRIBUCIÓN POR FVT Y TENDENCIA SEMANAL ---------
+# --------------------------------------------------
+# GRAFICAS: % DE FALLAS POR FVT Y TENDENCIA SEMANAL
+# --------------------------------------------------
 col_bottom1, col_bottom2 = st.columns(2)
 
-# ---- Izquierda: Barras por FVT ----
+# 1) Barras por FVT
 with col_bottom1:
-    st.markdown("### Porcentaje de fallas por FVT")
+    st.subheader("Porcentaje de fallas por FVT")
 
     failure_by_fvt = (
         subset.groupby("FVT")["Fail"]
-              .mean()
-              .reset_index(name="FailRate")
+        .mean()
+        .reset_index(name="FailRate")
     )
     failure_by_fvt["FailRate_pct"] = 100 * failure_by_fvt["FailRate"]
 
@@ -146,31 +190,35 @@ with col_bottom1:
             failure_by_fvt.sort_values("FailRate_pct", ascending=False),
             x="FVT",
             y="FailRate_pct",
-            text="FailRate_pct",
+            labels={"FVT": "Modelo FVT", "FailRate_pct": "% de fallas"},
         )
         fig_fvt.update_traces(
-            texttemplate='%{text:.2f}%',
-            textposition='outside'
+            text=failure_by_fvt.sort_values("FailRate_pct", ascending=False)["FailRate_pct"].round(2),
+            texttemplate="%{text:.2f}%",
+            textposition="outside",
         )
         fig_fvt.update_layout(
             yaxis_title="% de fallas",
             height=380,
-            margin=dict(l=20, r=20, t=40, b=60),
+            margin=dict(l=20, r=20, t=10, b=40),
         )
         st.plotly_chart(fig_fvt, use_container_width=True)
     else:
         st.info("No hay datos para los filtros seleccionados.")
 
-# ---- Derecha: Tendencia semanal ----
+# 2) Tendencia semanal
 with col_bottom2:
-    st.markdown("### Tendencia de fallas por semana")
+    st.subheader("Tendencia de fallas por semana")
 
     failure_over_time = (
         subset.groupby("Week")["Fail"]
-              .mean()
-              .reset_index(name="FailRate")
+        .mean()
+        .reset_index(name="FailRate")
     )
     failure_over_time["FailRate_pct"] = 100 * failure_over_time["FailRate"]
+
+    # Quitar semanas sin fecha
+    failure_over_time = failure_over_time.dropna(subset=["Week"])
 
     if not failure_over_time.empty:
         fig_time = px.line(
@@ -178,75 +226,74 @@ with col_bottom2:
             x="Week",
             y="FailRate_pct",
             markers=True,
+            labels={"Week": "Semana", "FailRate_pct": "% de fallas"},
         )
         fig_time.update_layout(
             yaxis_title="% de fallas",
             height=380,
-            margin=dict(l=20, r=20, t=40, b=60),
+            margin=dict(l=20, r=20, t=10, b=40),
         )
         st.plotly_chart(fig_time, use_container_width=True)
     else:
         st.info("No hay datos con fecha para los filtros seleccionados.")
 
-# ============================================================
-#   NUEVA SECCIÓN: LÍMITES DE CONTROL (GETANGLE)
-# ============================================================
 st.markdown("---")
-st.header("Análisis de límites de control – Pruebas GetAngle")
 
-# Para esta sección usamos SOLO FVT (sin separar CD/CW aquí)
-available_fvts_limits = sorted(getangle_summary["FVT"].unique())
+# --------------------------------------------------
+# SECCIÓN: LÍMITES DE CONTROL – GETANGLE
+# --------------------------------------------------
+st.subheader("Análisis de límites de control – Pruebas GetAngle")
 
-fvt_for_limits = st.selectbox(
-    "Selecciona FVT para análisis de GetAngle",
-    available_fvts_limits,
-)
+# Filtros específicos para límites
+col_lim_1, col_lim_2 = st.columns(2)
 
-summary_filtered = getangle_summary[getangle_summary["FVT"] == fvt_for_limits]
+with col_lim_1:
+    fvt_limits = sorted(getangle_summary["FVT"].dropna().unique())
+    fvt_sel_limits = st.selectbox(
+        "Selecciona FVT para ver % fuera de límites",
+        options=fvt_limits,
+    )
+
+with col_lim_2:
+    base_types_limits = sorted(getangle_summary["BaseType"].dropna().unique())
+    base_sel_limits = st.selectbox(
+        "Selecciona tipo de producto (BaseType)",
+        options=base_types_limits,
+    )
+
+summary_filtered = getangle_summary[
+    (getangle_summary["FVT"] == fvt_sel_limits)
+    & (getangle_summary["BaseType"] == base_sel_limits)
+].copy()
 
 if summary_filtered.empty:
-    st.warning("No hay datos de límites para esta FVT.")
+    st.info("No hay datos de límites para esa combinación de FVT y BaseType.")
 else:
-    st.markdown(
-        f"**% de lecturas fuera de límites de control** "
-        f"para las pruebas GetAngle de **{fvt_for_limits}**."
+    # Ordenar por % fuera de límites desc
+    summary_filtered = summary_filtered.sort_values(
+        "Percent_out_of_limits_pct", ascending=False
     )
-
-    # Elegimos la columna de nombre de prueba
-    if "Test_raw" in summary_filtered.columns:
-        x_col = "Test_raw"
-    elif "Test_col" in summary_filtered.columns:
-        x_col = "Test_col"
-    elif "Test" in summary_filtered.columns:
-        x_col = "Test"
-    else:
-        x_col = summary_filtered.columns[0]  # fallback muy defensivo
-
-    summary_plot = summary_filtered.sort_values("Percent_out_of_limits", ascending=False)
 
     fig_limits = px.bar(
-        summary_plot,
-        x=x_col,
-        y="Percent_out_of_limits",
-        text="Percent_out_of_limits",
+        summary_filtered,
+        x="Test",
+        y="Percent_out_of_limits_pct",
         labels={
-            x_col: "Prueba GetAngle",
-            "Percent_out_of_limits": "% fuera de límites",
+            "Test": "Prueba GetAngle",
+            "Percent_out_of_limits_pct": "% fuera de límites",
         },
     )
-
     fig_limits.update_traces(
-        texttemplate='%{text:.2f}%',
-        textposition='outside'
+        text=summary_filtered["Percent_out_of_limits_pct"].round(1),
+        texttemplate="%{text:.1f}%",
+        textposition="outside",
     )
     fig_limits.update_layout(
         yaxis_title="% fuera de límites",
-        xaxis_title="Prueba GetAngle",
-        xaxis_tickangle=-45,
-        height=450,
-        margin=dict(l=40, r=30, t=40, b=120),
+        height=430,
+        margin=dict(l=20, r=20, t=10, b=80),
     )
-
     st.plotly_chart(fig_limits, use_container_width=True)
+
 
 
