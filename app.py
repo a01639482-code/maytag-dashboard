@@ -2,113 +2,92 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# =========================
-# CONFIGURACIÓN DE PÁGINA
-# =========================
+# -------------------------------------------------
+# CARGA DE DATOS PRINCIPALES
+# -------------------------------------------------
+@st.cache_data
+def load_data(path: str):
+    df = pd.read_csv(path, parse_dates=["Date"])
+
+    # Asegurar tipos
+    df["BaseType"] = df["BaseType"].astype(str)
+    df["FVT"] = df["FVT"].astype(str)
+
+    # Columna de falla: 1 si Status = 'FAILED'
+    df["Fail"] = (
+        df["Status"]
+        .astype(str)
+        .str.strip()
+        .str.upper()
+        .eq("FAILED")
+        .astype(int)
+    )
+
+    # Semana (inicio de cada semana)
+    df["Week"] = df["Date"].dt.to_period("W").dt.start_time
+
+    return df
+
+
+# -------------------------------------------------
+# CARGA DEL RESUMEN GETANGLE CORREGIDO
+# -------------------------------------------------
+@st.cache_data
+def load_getangle_summary(path: str):
+    df = pd.read_csv(path)
+
+    # Normalizar tipos
+    if "FVT" in df.columns:
+        df["FVT"] = df["FVT"].astype(str)
+
+    if "BaseType" in df.columns:
+        df["BaseType"] = df["BaseType"].astype(str)
+
+    # Campo crítico
+    df["Percent_out_of_limits"] = df["Percent_out_of_limits"].astype(float)
+
+    # ============================
+    # AJUSTE POR CAMBIO DE COLUMNAS
+    # ============================
+
+    # Test_label reemplaza Test_raw
+    if "Test_label" in df.columns:
+        df["Test_raw"] = df["Test_label"].astype(str)
+
+    # Test_col_used reemplaza Test_col
+    if "Test_col_used" in df.columns:
+        df["Test_col"] = df["Test_col_used"].astype(str)
+
+    return df
+
+
+# -------------------------------------------------
+# CONFIGURACIÓN DE LA PÁGINA
+# -------------------------------------------------
 st.set_page_config(
     page_title="Dashboard Maytag Series 6",
     layout="wide",
 )
 
-st.title("Dashboard Maytag Series 6 ")
-st.markdown(
-    """
-Monitoreo de desempeño de pruebas **CD (secadoras)** y **CW (lavadoras)**  
+st.title("Dashboard Maytag Series 6")
 
-- % de fallas por tipo de producto, por FVT y por semana  
-- % de lecturas **fuera de límites de control** para pruebas GetAngle
-"""
-)
-
-# =========================
-# RUTINAS DE CARGA DE DATOS
-# =========================
-
+# -------------------------------------------------
+# RUTAS DE ARCHIVOS
+# -------------------------------------------------
 DATA_PATH = "maytag_dashboardFinal_data.csv"
-SUMMARY_PATH = "getangle_summary_v2.csv"
-
-
-@st.cache_data
-def load_data(path: str) -> pd.DataFrame:
-    """Lee la base principal de pruebas (CD/CW)."""
-    df = pd.read_csv(path, parse_dates=["Date"])
-
-    # Normalizar columnas clave
-    if "BaseType" in df.columns:
-        df["BaseType"] = df["BaseType"].astype(str)
-
-    if "FVT" in df.columns:
-        df["FVT"] = df["FVT"].astype(str)
-
-    # Columna de falla: 1 = Failed, 0 = lo demás
-    if "Status" in df.columns:
-        df["Fail"] = (
-            df["Status"]
-            .astype(str)
-            .str.strip()
-            .str.upper()
-            .eq("FAILED")
-            .astype(int)
-        )
-    else:
-        df["Fail"] = 0
-
-    # Semana de la prueba
-    if "Date" in df.columns:
-        df["Week"] = df["Date"].dt.to_period("W").dt.start_time
-    else:
-        df["Week"] = pd.NaT
-
-    return df
-
-
-@st.cache_data
-def load_getangle_summary(path: str) -> pd.DataFrame:
-    """
-    Lee el resumen de límites para GetAngle.
-    NO lanza errores si algo viene raro; solo limpia nombres.
-    """
-    df = pd.read_csv(path)
-
-    # Quitar espacios en blanco por si vienen columnas con espacio al final
-    df.columns = df.columns.str.strip()
-
-    # Normalizar nombres típicos con espacios
-    rename_map = {
-        "BaseType ": "BaseType",
-        "Test ": "Test",
-        "Percent_out_of_limits ": "Percent_out_of_limits",
-    }
-    df = df.rename(columns=rename_map)
-
-    # Normalizar tipos
-    if "FVT" in df.columns:
-        df["FVT"] = df["FVT"].astype(str)
-    if "BaseType" in df.columns:
-        df["BaseType"] = df["BaseType"].astype(str)
-
-    # Si la columna de porcentaje no existe, la creamos en 0 para no tronar
-    if "Percent_out_of_limits" not in df.columns:
-        df["Percent_out_of_limits"] = 0.0
-
-    return df
-
-
-# =========================
-# CARGA
-# =========================
+SUMMARY_PATH = "getangle_summary_v2.csv"     # TU ARCHIVO NUEVO
 
 data = load_data(DATA_PATH)
 getangle_summary = load_getangle_summary(SUMMARY_PATH)
 
-# =========================
-# CÁLCULOS GLOBALES CD vs CW
-# =========================
 
+# -------------------------------------------------
+# MÉTRICAS GLOBALES CD vs CW
+# -------------------------------------------------
 failure_by_product = (
     data.groupby("BaseType")["Fail"]
-    .mean()
-    .reset_index(name="FailRate")
+        .mean()
+        .reset_index(name="FailRate")
 )
 failure_by_product["FailRate_pct"] = 100 * failure_by_product["FailRate"]
 
@@ -122,36 +101,32 @@ cw_rate = failure_by_product.loc[
 cd_rate = float(cd_rate.iloc[0]) if not cd_rate.empty else None
 cw_rate = float(cw_rate.iloc[0]) if not cw_rate.empty else None
 
-# =========================
-# SIDEBAR: FILTROS
-# =========================
 
-st.sidebar.header("Filtros")
+# -------------------------------------------------
+# SIDEBAR - FILTROS
+# -------------------------------------------------
+st.sidebar.header("Filtros principales")
 
-# Tipo de producto (CD / CW)
 product_type = st.sidebar.radio(
-    "Selecciona el producto",
+    "Selecciona el tipo de producto",
     sorted(data["BaseType"].unique()),
-    help="CD = secadoras, CW = lavadoras",
 )
 
 subset = data[data["BaseType"] == product_type].copy()
 
-# Filtro de FVTs
-lista_fvt = sorted(subset["FVT"].unique())
 fvt_selected = st.sidebar.multiselect(
     "Selecciona FVT",
-    lista_fvt,
-    default=lista_fvt,
+    sorted(subset["FVT"].unique()),
+    default=sorted(subset["FVT"].unique()),
 )
 
 if fvt_selected:
     subset = subset[subset["FVT"].isin(fvt_selected)]
 
-# =========================
-# MÉTRICA PRINCIPAL
-# =========================
 
+# -------------------------------------------------
+# MÉTRICAS PRINCIPALES
+# -------------------------------------------------
 selected_fail_rate = subset["Fail"].mean() * 100 if len(subset) > 0 else 0.0
 
 col_top1, col_top2 = st.columns([2, 1])
@@ -173,25 +148,24 @@ with col_top2:
     elif cw_rate is not None:
         txt = f"- CW: **{cw_rate:.2f}%**"
     else:
-        txt = "No hay información global."
+        txt = "Sin datos suficientes."
     st.markdown(txt)
 
 st.markdown("---")
 
-# =========================
-# GRÁFICAS PRINCIPALES (2 columnas)
-# =========================
 
+# -------------------------------------------------
+# GRAFICA 1: BARRAS POR FVT
+# -------------------------------------------------
 col_bottom1, col_bottom2 = st.columns(2)
 
-# ---- Izquierda: Barras por FVT ----
 with col_bottom1:
     st.markdown("### Porcentaje de fallas por FVT")
 
     failure_by_fvt = (
         subset.groupby("FVT")["Fail"]
-        .mean()
-        .reset_index(name="FailRate")
+              .mean()
+              .reset_index(name="FailRate")
     )
     failure_by_fvt["FailRate_pct"] = 100 * failure_by_fvt["FailRate"]
 
@@ -201,29 +175,28 @@ with col_bottom1:
             x="FVT",
             y="FailRate_pct",
             text="FailRate_pct",
-            labels={"FVT": "Modelo FVT", "FailRate_pct": "% de fallas"},
         )
         fig_fvt.update_traces(
-            texttemplate="%{text:.2f}%",
-            textposition="outside",
+            texttemplate='%{text:.2f}%',
+            textposition='outside'
         )
         fig_fvt.update_layout(
             yaxis_title="% de fallas",
             height=380,
-            margin=dict(l=20, r=20, t=40, b=40),
         )
         st.plotly_chart(fig_fvt, use_container_width=True)
-    else:
-        st.info("No hay datos para los filtros seleccionados.")
 
-# ---- Derecha: Tendencia semanal ----
+
+# -------------------------------------------------
+# GRAFICA 2: TENDENCIA SEMANAL
+# -------------------------------------------------
 with col_bottom2:
     st.markdown("### Tendencia de fallas por semana")
 
     failure_over_time = (
         subset.groupby("Week")["Fail"]
-        .mean()
-        .reset_index(name="FailRate")
+              .mean()
+              .reset_index(name="FailRate")
     )
     failure_over_time["FailRate_pct"] = 100 * failure_over_time["FailRate"]
 
@@ -233,65 +206,69 @@ with col_bottom2:
             x="Week",
             y="FailRate_pct",
             markers=True,
-            labels={"Week": "Semana", "FailRate_pct": "% de fallas"},
         )
         fig_time.update_layout(
             yaxis_title="% de fallas",
             height=380,
-            margin=dict(l=20, r=20, t=40, b=40),
         )
         st.plotly_chart(fig_time, use_container_width=True)
-    else:
-        st.info("No hay datos con fecha para los filtros seleccionados.")
 
+
+# ============================================================
+#      SECCIÓN GETANGLE – LÍMITES DE CONTROL
+# ============================================================
 st.markdown("---")
+st.header("Análisis de límites de control – Pruebas GetAngle")
 
-# =========================
-# NUEVA SECCIÓN: % FUERA DE LÍMITES GETANGLE
-# =========================
+available_fvts_limits = sorted(getangle_summary["FVT"].unique())
 
-st.markdown("### % de lecturas fuera de límites de control (GetAngle)")
+fvt_for_limits = st.selectbox(
+    "Selecciona FVT para análisis de GetAngle",
+    available_fvts_limits,
+)
 
-# Filtrar el resumen por producto y FVTs seleccionados
-summary_filtered = getangle_summary.copy()
-summary_filtered = summary_filtered[
-    (summary_filtered["BaseType"] == product_type)
-]
+summary_filtered = getangle_summary[getangle_summary["FVT"] == fvt_for_limits]
 
-if fvt_selected:
-    summary_filtered = summary_filtered[
-        summary_filtered["FVT"].isin(fvt_selected)
-    ]
+if summary_filtered.empty:
+    st.warning("No hay datos de límites para esta FVT.")
+else:
+    st.markdown(
+        f"**% de lecturas fuera de límites de control** para **{fvt_for_limits}**."
+    )
 
-if not summary_filtered.empty:
-    # Convertir a %
-    summary_filtered["Percent_out_of_limits_pct"] = (
-        summary_filtered["Percent_out_of_limits"] * 100.0
+    # Selección automática del nombre de columna correcto
+    if "Test_label" in summary_filtered.columns:
+        x_col = "Test_label"
+    elif "Test_col_used" in summary_filtered.columns:
+        x_col = "Test_col_used"
+    elif "Test_raw" in summary_filtered.columns:
+        x_col = "Test_raw"
+    elif "Test_col" in summary_filtered.columns:
+        x_col = "Test_col"
+    else:
+        x_col = summary_filtered.columns[0]
+
+    summary_plot = summary_filtered.sort_values(
+        "Percent_out_of_limits", ascending=False
     )
 
     fig_limits = px.bar(
-        summary_filtered.sort_values(
-            "Percent_out_of_limits_pct", ascending=False
-        ),
-        x="Test",
-        y="Percent_out_of_limits_pct",
-        text="Percent_out_of_limits_pct",
-        labels={
-            "Test": "Prueba GetAngle",
-            "Percent_out_of_limits_pct": "% fuera de límites",
-        },
+        summary_plot,
+        x=x_col,
+        y="Percent_out_of_limits",
+        text="Percent_out_of_limits",
+        labels={"Percent_out_of_limits": "% fuera de límites"},
     )
+
     fig_limits.update_traces(
-        texttemplate="%{text:.1f}%",
-        textposition="outside",
+        texttemplate='%{text:.2f}%',
+        textposition='outside'
     )
     fig_limits.update_layout(
         yaxis_title="% fuera de límites",
-        height=420,
-        margin=dict(l=20, r=20, t=40, b=40),
+        xaxis_title="Prueba GetAngle",
+        xaxis_tickangle=-45,
+        height=450,
     )
+
     st.plotly_chart(fig_limits, use_container_width=True)
-else:
-    st.info(
-        "No hay información de límites para la combinación de producto y FVT seleccionada."
-    )
