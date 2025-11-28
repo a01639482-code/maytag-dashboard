@@ -44,11 +44,11 @@ def load_getangle_summary(path: str):
 #        CONFIG PÁGINA
 # =========================================================
 st.set_page_config(
-    page_title="Dashboard Maytag Series 6 – Xtronic",
+    page_title="Dashboard Maytag Series 6",
     layout="wide",
 )
 
-st.title("Dashboard Maytag Series 6 – Xtronic")
+st.title("Dashboard Maytag Series 6")
 st.markdown(
     """
 Monitoreo de desempeño de pruebas CD (secadoras) y CW (lavadoras)  
