@@ -27,11 +27,9 @@ def load_data(path: str):
 def load_getangle_summary(path: str):
     df = pd.read_csv(path)
 
-    # Tipos correctos
     df["FVT"] = df["FVT"].astype(str)
     df["BaseType"] = df["BaseType"].astype(str)
 
-    # Columnas posibles
     if "Test_label" in df.columns:
         df["Test_label"] = df["Test_label"].astype(str)
     if "Test_col_used" in df.columns:
@@ -133,7 +131,7 @@ with col_top2:
 st.markdown("---")
 
 # =========================================================
-#           GRAFICA 1 — FALLAS POR FVT (mejorada)
+#           GRAFICA 1 — FALLAS POR FVT (FORMATO PRO)
 # =========================================================
 col1, col2 = st.columns(2)
 
@@ -147,31 +145,24 @@ with col1:
 
     if not failure_by_fvt.empty:
 
-        # Resaltar la barra con valor máximo
-        max_value = failure_by_fvt["FailRate_pct"].max()
-        failure_by_fvt["color"] = failure_by_fvt["FailRate_pct"].apply(
-            lambda x: "crimson" if x == max_value else "steelblue"
-        )
-
         fig_fvt = px.bar(
             failure_by_fvt.sort_values("FailRate_pct", ascending=False),
             x="FVT",
             y="FailRate_pct",
-            color="color",
-            color_discrete_map="identity",
             text="FailRate_pct",
+            color_discrete_sequence=["steelblue"],
         )
 
         fig_fvt.update_traces(
             texttemplate='%{text:.2f}%',
-            textposition="outside",
+            textposition="outside"
         )
 
         fig_fvt.update_layout(
             yaxis_title="% de fallas",
             height=420,
+            yaxis_range=[0, 20],  
             margin=dict(l=20, r=20, t=40, b=80),
-            yaxis_range=[0, 20],  # Escala FIJA
             showlegend=False,
         )
 
@@ -181,7 +172,7 @@ with col1:
         st.info("No hay datos para los filtros seleccionados.")
 
 # =========================================================
-#      GRAFICA 2 — TENDENCIA SEMANAL (sin cambios mayores)
+#      GRAFICA 2 — TENDENCIA SEMANAL
 # =========================================================
 with col2:
     st.markdown("### Tendencia de fallas por semana")
@@ -210,7 +201,7 @@ with col2:
         st.info("No hay datos con fecha para los filtros seleccionados.")
 
 # =========================================================
-#      SECCIÓN GETANGLE — AHORA HORIZONTAL Y PROFESIONAL
+#      SECCIÓN GETANGLE — VERSIÓN PROFESIONAL FINAL
 # =========================================================
 st.markdown("---")
 st.header("Análisis de límites de control – Pruebas GetAngle")
@@ -228,7 +219,6 @@ if summary_filtered.empty:
     st.warning("No hay datos de límites para esta FVT.")
 else:
 
-    # Seleccionar nombre correcto
     if "Test_label" in summary_filtered.columns:
         x_col = "Test_label"
     elif "Test_col_used" in summary_filtered.columns:
@@ -238,20 +228,13 @@ else:
 
     summary_plot = summary_filtered.sort_values("Percent_out_of_limits", ascending=True)
 
-    # Resaltar máximo
-    max_val = summary_plot["Percent_out_of_limits"].max()
-    summary_plot["color"] = summary_plot["Percent_out_of_limits"].apply(
-        lambda x: "darkred" if x == max_val else "royalblue"
-    )
-
     fig_limits = px.bar(
         summary_plot,
         y=x_col,
         x="Percent_out_of_limits",
         orientation="h",
+        color_discrete_sequence=["royalblue"],
         text="Percent_out_of_limits",
-        color="color",
-        color_discrete_map="identity",
         labels={
             x_col: "Prueba GetAngle",
             "Percent_out_of_limits": "% fuera de límites",
@@ -259,8 +242,9 @@ else:
     )
 
     fig_limits.update_traces(
-        texttemplate='%{text:.2f}%',
+        texttemplate="%{text:.2%}",  # SOLO AL FINAL
         textposition="outside",
+        insidetextanchor=None,       # *** EVITA QUE APAREZCA TEXTO DENTRO ***
     )
 
     fig_limits.update_layout(
@@ -268,8 +252,8 @@ else:
         yaxis_title="Prueba GetAngle",
         height=550,
         margin=dict(l=40, r=20, t=40, b=60),
+        xaxis_range=[0, summary_plot["Percent_out_of_limits"].max() * 1.3],  # NO barras gigantes
         showlegend=False,
-        xaxis_range=[0, summary_plot["Percent_out_of_limits"].max() * 1.2],  # espacio extra
     )
 
     st.plotly_chart(fig_limits, use_container_width=True)
