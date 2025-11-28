@@ -57,7 +57,7 @@ st.title("Dashboard Maytag Series 6 – Xtronic")
 
 # --------- RUTAS DE ARCHIVOS ---------
 DATA_PATH = "maytag_dashboardFinal_data.csv"
-SUMMARY_PATH = "getangle_summary_v2.csv"   # ← nombre que tú usaste
+SUMMARY_PATH = "getangle_summary_v2.csv"
 
 data = load_data(DATA_PATH)
 getangle_summary = load_getangle_summary(SUMMARY_PATH)
