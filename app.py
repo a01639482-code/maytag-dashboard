@@ -201,7 +201,7 @@ with col2:
         st.info("No hay datos con fecha para los filtros seleccionados.")
 
 # =========================================================
-#      SECCIÓN GETANGLE — GRÁFICA FINAL COMPACTA
+#      SECCIÓN GETANGLE — GRÁFICA FINAL CORREGIDA
 # =========================================================
 st.markdown("---")
 st.header("Análisis de límites de control – Pruebas GetAngle")
@@ -227,43 +227,48 @@ else:
     else:
         x_col = "Test"
 
-    # Orden ascendente (más limpia la lectura)
-    summary_plot = summary_filtered.sort_values("Percent_out_of_limits", ascending=True)
+    # Orden ascendente (limpia la lectura)
+    summary_plot = summary_filtered.sort_values(
+        "Percent_out_of_limits", ascending=True
+    )
 
-    # Construcción de gráfica
+    # >>> Escala corta para que NO se vaya hasta la derecha <<<
+    max_value = summary_plot["Percent_out_of_limits"].max()
+    x_max = max_value * 1.10  # 10% extra de aire
+
+    # Gráfica tipo barra horizontal
     fig_limits = px.bar(
         summary_plot,
         y=x_col,
         x="Percent_out_of_limits",
         orientation="h",
-        color_discrete_sequence=["royalblue"],
+        color_discrete_sequence=["#3A66FF"],
         labels={
             x_col: "Prueba GetAngle",
             "Percent_out_of_limits": "% fuera de límites",
         },
-        height=40 * len(summary_plot) + 200,   # <<< BARRAS COMPACTAS
+        height=35 * len(summary_plot) + 200,   # barras delgadas
     )
 
-    # --- QUITAR TEXTO INTERNO y solo mostrarlo al final ---
-    fig_limits.update_traces(
-        text=None,  # <<< elimina el texto dentro de la barra
-    )
+    # ---- SIN TEXTO ADENTRO ----
+    fig_limits.update_traces(text=None)
 
-    # --- Añadir texto SOLO AL FINAL DE LA BARRA ---
+    # ---- TEXTO SOLO AL FINAL ----
     fig_limits.update_traces(
         texttemplate="%{x:.2%}",
         textposition="outside",
         textfont=dict(size=16, color="black", family="Arial Black"),
     )
 
-    # --- Ajustar escala para que no ocupe TODA la pantalla ---
-    max_val = summary_plot["Percent_out_of_limits"].max()
+    # ---- Ajustar ancho para que SIEMPRE se vea el texto final ----
     fig_limits.update_layout(
-        xaxis_range=[0, max_val * 1.25],   # más compacto visualmente
-        margin=dict(l=40, r=40, t=40, b=40),
+        xaxis=dict(range=[0, x_max]),
+        margin=dict(l=50, r=80, t=40, b=40),
         showlegend=False,
+        bargap=0.25,      # separa barras (más delgadas visualmente)
         xaxis_title="% fuera de límites",
         yaxis_title="Prueba GetAngle",
     )
 
     st.plotly_chart(fig_limits, use_container_width=True)
+
